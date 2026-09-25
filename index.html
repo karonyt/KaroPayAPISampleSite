@@ -1,73 +1,36 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#101318" />
-  <title>KaroCraft Market</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>活動サポート</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="./index.html" aria-label="KaroCraft Market">
-      <span>K</span>
-      <strong>KaroCraft Market</strong>
-    </a>
-    <form class="shop-config" id="shop-config">
-      <label>
-        <span>KaroPay URL</span>
-        <input id="api-base" name="apiBase" autocomplete="off" />
-      </label>
-      <label>
-        <span>サイト用コード</span>
-        <input id="receive-code" name="receiveCode" autocomplete="off" />
-      </label>
-      <button type="submit">保存</button>
-    </form>
+    <div class="brand"><span>K</span><strong>Activity Support</strong></div>
   </header>
-
   <main>
     <section class="hero">
-      <img src="./assets/shop-hero.png" alt="ゲーム内ショップの商品ディスプレイ" />
       <div class="hero-copy">
-        <p>Digital Goods</p>
-        <h1>KaroCraft Market</h1>
-        <span>ランク、ジェム、建築キットをKaroPayで販売</span>
+        <h1>活動を支援する</h1>
+        <span>あなたの寄付が活動の力になります。</span>
       </div>
     </section>
-
-    <section class="product-section" aria-label="商品一覧">
+    <section class="product-section">
       <div class="section-head">
-        <div>
-          <p>Shop Items</p>
-          <h2>商品</h2>
-        </div>
-        <output id="shop-status">設定を保存してください</output>
+        <h2>寄付金額</h2>
+        <div id="shop-status">準備完了</div>
       </div>
-
-      <div class="product-grid" id="product-grid"></div>
+      <div class="shop-config">
+        <label>
+          <span>金額 (円)</span>
+          <input type="number" id="amount" placeholder="500">
+        </label>
+        <button id="pay-btn">決済に進む</button>
+      </div>
     </section>
   </main>
-
-  <template id="product-card-template">
-    <article class="product-card">
-      <div class="product-art" aria-hidden="true">
-        <span class="shape main"></span>
-        <span class="shape accent"></span>
-        <span class="shape spark"></span>
-      </div>
-      <div class="product-copy">
-        <small></small>
-        <h3></h3>
-        <p></p>
-      </div>
-      <div class="product-buy">
-        <strong></strong>
-        <button type="button">購入</button>
-      </div>
-    </article>
-  </template>
-
-  <script src="./app.js" type="module"></script>
+  <script src="app.js"></script>
 </body>
 </html>

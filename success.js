@@ -27,8 +27,8 @@ async function verifyPayment() {
     const amountMatches = !expectedAmount || Number(session.amount) === Number(expectedAmount);
 
     if (session.status === 'paid' && amountMatches) {
-      showResult('paid', '購入ありがとうございます', [
-        ['商品', product?.name || session.description || '購入商品'],
+      showResult('paid', 'Thank you!', [
+        ['商品', product?.name || session.description || 'Donation'],
         ['金額', `$${Number(session.amount || 0).toLocaleString('en-US')}`],
         ['取引', session.id]
       ]);
