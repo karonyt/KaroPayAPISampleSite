@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101318" />
+  <title>投げ銭・応援 | KaroPay の使い方</title>
+  <meta name="description" content="建築家や配信者への投げ銭。金額を選ぶか自由に入れて、ひとことを添えて送る。" />
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../index.html" aria-label="KaroCraft Market">
+      <span>K</span>
+      <strong>KaroPay の使い方</strong>
+    </a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="../index.html">ショップ</a>
+      <a href="./index.html">使い方の例</a>
+      <a href="../docs.html">API ドキュメント</a>
+    </nav>
+  </header>
+
+  <main class="example-page">
+    <div>
+      <p class="hint"><a href="./index.html">使い方の例</a> / 01</p>
+      <h1>投げ銭・応援</h1>
+    </div>
+    <p class="example-lead">建築の展示ページや配信の概要欄に置く「応援する」ボタンの例です。金額は購入者が決めます。ひとことは Checkout の説明に入るので、受取人は KaroPay の管理画面の決済一覧で読めます。</p>
+    <p class="hint">使う API: <code>POST /api/checkout/public/sessions</code> / <code>GET /api/checkout/public/sessions/:id</code> ・ <a href="https://github.com/karonyt/KaroPayAPISampleSite/blob/main/examples/tip.html">このページのソース</a></p>
+    <section id="settings"></section>
+    <section class="panel-section" id="tip-panel">
+      <div class="section-head"><div><p>Tip</p><h2>Karon 建築スタジオを応援する</h2></div></div>
+      <p class="hint">金額を選んでください。</p>
+      <div class="choice-row" id="presets"></div>
+      <div class="form-grid">
+        <label><span>金額（$）</span><input id="amount" type="number" min="1" step="1" value="100" /></label>
+      </div>
+      <label class="field"><span>ひとこと（任意・100 文字まで）</span><input id="message" maxlength="100" placeholder="いつも見てます！" /></label>
+      <div><button class="solid-button" id="send" type="button">応援する</button></div>
+      <output class="inline-status" id="status"></output>
+    </section>
+    <div class="notice ok" id="thanks" hidden></div>
+
+    <section class="panel-section">
+      <div class="section-head"><div><p>Points</p><h2>実装のポイント</h2></div></div>
+      <ul class="hint">
+        <li>金額を購入者が決めるので、<code>amount</code> は入力値をそのまま送ります。整数・1 以上だけ受け付けるよう、送る前にも確かめます。</li>
+        <li>ひとことは <code>description</code>（160 文字まで）に入れます。受取人は <code>/manage</code> の「決済」で読めます。</li>
+        <li>投げ銭は渡す物がないので、戻ってきたときの表示だけで足ります。この例は <code>successUrl</code> を自分自身にして、お礼を出しています。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script type="module">
+import { bindCheckoutButton, el, mountSettings, money, readReturn, setStatus } from './common.js';
+
+mountSettings();
+const amount = document.getElementById('amount');
+const presets = document.getElementById('presets');
+for (const value of [50, 100, 500, 1000, 5000]) {
+  presets.append(el('button', { type: 'button', 'aria-pressed': String(value === 100), onclick: () => {
+    amount.value = value;
+    for (const b of presets.children) b.setAttribute('aria-pressed', String(b.textContent === money(value)));
+  } }, money(value)));
+}
+
+bindCheckoutButton(document.getElementById('send'), document.getElementById('status'), () => {
+  const value = Number(amount.value);
+  if (!Number.isSafeInteger(value) || value < 1) throw new Error('金額は 1 以上の整数にしてください');
+  const message = document.getElementById('message').value.trim();
+  return {
+    amount: value,
+    name: '投げ銭',
+    description: message ? `投げ銭「${message}」` : '投げ銭',
+    refPrefix: 'tip',
+    returnTo: 'self'
+  };
+});
+
+const result = await readReturn().catch(() => null);
+if (result?.verified) {
+  const thanks = document.getElementById('thanks');
+  thanks.hidden = false;
+  thanks.textContent = `${result.session.payerName} さん、${money(result.session.amount)} の応援ありがとうございます！`;
+} else if (result?.canceled) {
+  setStatus(document.getElementById('status'), '取りやめました。またいつでもどうぞ。');
+} else if (result?.session) {
+  setStatus(document.getElementById('status'), `支払いを確認できませんでした（状態: ${result.session.status}）`, 'error');
+}
+  </script>
+</body>
+</html>

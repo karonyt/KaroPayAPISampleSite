@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101318" />
+  <title>KaroPay API ドキュメント</title>
+  <meta name="description" content="KaroPay Checkout API（サイト用コード版・APIキー版）、サブスク、決済リンクの使い方" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="./index.html" aria-label="KaroCraft Market">
+      <span>K</span>
+      <strong>KaroPay API</strong>
+    </a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="./index.html">ショップ</a>
+      <a href="./examples/index.html">使い方の例</a>
+      <a href="./docs.html" aria-current="page">API ドキュメント</a>
+    </nav>
+  </header>
+
+  <div class="docs-shell">
+    <nav class="docs-toc" aria-label="目次">
+      <a href="#overview">概要</a>
+      <a href="#flow">支払いの流れ</a>
+      <a href="#receive-code">サイト用コード</a>
+      <a href="#public-create">Checkout を作る</a>
+      <a class="sub" href="#params">パラメータ</a>
+      <a class="sub" href="#subscription">サブスク</a>
+      <a href="#public-get">状態を読む</a>
+      <a href="#session-object">Checkout オブジェクト</a>
+      <a href="#return">戻り先のクエリ</a>
+      <a href="#verify">支払いの確かめ方</a>
+      <a href="#merchant-api">APIキー版</a>
+      <a class="sub" href="#idempotency">Idempotency-Key</a>
+      <a class="sub" href="#cancel">取り消し</a>
+      <a href="#payment-links">決済リンク</a>
+      <a href="#after-payment">支払い後（契約・返金）</a>
+      <a href="#errors">エラー</a>
+      <a href="#limits">制限</a>
+      <a href="#examples">使い方の例</a>
+    </nav>
+
+    <main class="docs-body">
+      <section class="doc-card" id="overview">
+        <h1>KaroPay API</h1>
+        <p>KaroPay は、KaroEarth のゲーム内ドルで支払いを受け付けるサービスです。自分のサイトで「購入」ボタンを押した人を KaroPay の支払いページ（Checkout）へ送り、支払いが終わったら自分のサイトへ戻します。</p>
+        <p>使い方は 3 つあります。</p>
+        <table class="param-table">
+          <thead><tr><th>方法</th><th>向いている場面</th><th>認証</th></tr></thead>
+          <tbody>
+            <tr><td><a href="#public-create">サイト用コード版</a></td><td>静的サイト（GitHub Pages など）から直接。サーバーが要らない。</td><td>サイト用コード（公開してよい）</td></tr>
+            <tr><td><a href="#merchant-api">APIキー版</a></td><td>自分のサーバーがある。注文の重複防止・取り消しまでしたい。</td><td><code>Authorization: Bearer</code>（秘密）</td></tr>
+            <tr><td><a href="#payment-links">決済リンク</a></td><td>決まった商品を URL 1 本で売りたい。コードを書かない。</td><td>不要</td></tr>
+          </tbody>
+        </table>
+        <p>ベース URL: <code>https://karopay.karon.jp</code>。金額の単位はゲーム内ドル（整数）です。</p>
+      </section>
+
+      <section class="doc-card" id="flow">
+        <h2>支払いの流れ</h2>
+        <ol>
+          <li>自分のサイトで Checkout を作る（<code>POST /api/checkout/public/sessions</code>）。返ってきた <code>url</code> へ購入者を送る。</li>
+          <li>購入者は KaroPay に Karotter か Discord でログインし（Minecraft のアカウントを連携済みであること）、内容を確かめて支払う。</li>
+          <li>支払い完了の画面で購入者が「戻る」を押すと、<code>successUrl</code> にクエリ付きで戻る。取りやめたときは <code>cancelUrl</code> へ戻る。</li>
+          <li>自分のサイトで状態を読み（<code>GET</code>）、<code>status</code> が <code>paid</code> で、金額と注文番号が合っていれば商品を渡す。</li>
+        </ol>
+        <div class="callout">支払いのあと購入者が「戻る」を押さないこともあります。戻ってきたときだけでなく、自分の側で後から状態を読み直せるようにしてください（<a href="#verify">支払いの確かめ方</a>）。</div>
+      </section>
+
+      <section class="doc-card" id="receive-code">
+        <h2>サイト用コード</h2>
+        <p>サイト用コードは、売上を受け取る KaroPay 口座を表すコードです。KaroPay（<a href="https://karopay.karon.jp/receive">karopay.karon.jp/receive</a>）にログインして「受け取り」画面の「サイト用コード」からコピーします。</p>
+        <ul>
+          <li>コードで分かるのは「どの口座に払うか」だけです。コードを知っていても、口座からお金を引き出したり、取引を取り消したりはできません。そのため、ページに埋め込んで公開してかまいません。</li>
+          <li>「再発行」すると前のコードは使えなくなります（<code>CODE_NOT_FOUND</code>）。サイトのコードも差し替えてください。</li>
+          <li>Checkout に表示される受取人名は、コードの持ち主の Minecraft 名です。</li>
+        </ul>
+      </section>
+
+      <section class="doc-card" id="public-create">
+        <h2>Checkout を作る（サイト用コード版）</h2>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/checkout/public/sessions</code><span class="auth">認証なし・CORS 許可</span></div>
+        <p>どのサイトからでも <code>fetch</code> で呼べます（<code>Access-Control-Allow-Origin: *</code>）。</p>
+<pre><code>const res = await fetch('https://karopay.karon.jp/api/checkout/public/sessions', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    receiveCode: 'あなたのサイト用コード',
+    amount: 500,
+    description: 'VIP Rank',
+    clientReferenceId: 'order:12345',
+    successUrl: 'https://example.com/success.html',
+    cancelUrl: 'https://example.com/',
+    expiresInMinutes: 30
+  })
+});
+const data = await res.json();
+if (!data.ok) throw new Error(data.error);
+location.href = data.url; // KaroPay の支払いページへ</code></pre>
+
+        <h3 id="params">パラメータ（JSON）</h3>
+        <table class="param-table">
+          <thead><tr><th>名前</th><th>必須</th><th>説明</th></tr></thead>
+          <tbody>
+            <tr><td>receiveCode</td><td>必須</td><td>サイト用コード。<code>receive_code</code> でも可。</td></tr>
+            <tr><td>amount</td><td>必須</td><td>金額。1 以上の整数（上限 100,000,000）。</td></tr>
+            <tr><td>description</td><td></td><td>支払いページに出す説明。160 文字まで（超えた分は切られる）。</td></tr>
+            <tr><td>clientReferenceId</td><td></td><td>自分の注文番号。英数字と <code>. _ : -</code> だけ、120 文字まで。戻り先と状態の応答にそのまま返る。<code>client_reference_id</code> でも可。</td></tr>
+            <tr><td>successUrl</td><td></td><td>支払い完了後の戻り先。<code>http(s)</code> の絶対 URL、500 文字まで。<code>success_url</code> でも可。</td></tr>
+            <tr><td>cancelUrl</td><td></td><td>取りやめたときの戻り先。条件は successUrl と同じ。<code>cancel_url</code> でも可。</td></tr>
+            <tr><td>expiresInMinutes</td><td></td><td>支払い期限（分）。既定 30、最大 1440（24 時間）。<code>expires_in_minutes</code> でも可。</td></tr>
+            <tr><td>mode</td><td></td><td><code>payment</code>（既定・1 回だけ）か <code>subscription</code>（継続課金）。</td></tr>
+            <tr><td>subscription</td><td></td><td>サブスクのとき <code>{ "interval": "month", "intervalCount": 1 }</code>。下を参照。</td></tr>
+          </tbody>
+        </table>
+        <p>成功すると <code>201</code> で次を返します。</p>
+<pre><code>{
+  "ok": true,
+  "checkoutSession": { "id": "kcs_...", "status": "open", ... },
+  "url": "https://karopay.karon.jp/checkout/kcs_..."
+}</code></pre>
+
+        <h3 id="subscription">サブスク（継続課金）</h3>
+        <p><code>mode: "subscription"</code> にすると、最初の支払いで契約ができ、以後は周期ごとに KaroPay が購入者の口座から自動で請求します。</p>
+<pre><code>{
+  "receiveCode": "...",
+  "amount": 300,
+  "description": "VIP Pass（毎月）",
+  "mode": "subscription",
+  "subscription": { "interval": "month", "intervalCount": 1 }
+}</code></pre>
+        <table class="param-table">
+          <thead><tr><th>名前</th><th>説明</th></tr></thead>
+          <tbody>
+            <tr><td>interval</td><td><code>day</code> / <code>week</code> / <code>month</code>（<code>daily</code>・<code>weekly</code>・<code>monthly</code> なども可）。</td></tr>
+            <tr><td>intervalCount</td><td>1〜12。既定 1。<code>month</code> と 3 なら 3 か月ごと。</td></tr>
+          </tbody>
+        </table>
+        <ul>
+          <li>次の請求は、前の期間が終わった時点です（最初の支払いから 1 周期後）。</li>
+          <li>残高が足りないなどで失敗すると <code>past_due</code> になり、およそ 6 時間ごとにやり直します。</li>
+          <li>購入者は KaroPay の「サブスク」画面から解約できます。受取人は管理画面（<code>/manage</code>）から料金変更・即時解約・期間末の解約ができます。</li>
+          <li><code>subscription</code> を省いて <code>interval</code> / <code>intervalCount</code> を直接書いても受け付けます。</li>
+        </ul>
+      </section>
+
+      <section class="doc-card" id="public-get">
+        <h2>状態を読む</h2>
+        <div class="endpoint"><span class="method get">GET</span><code>/api/checkout/public/sessions/:id</code><span class="auth">認証なし・CORS 許可</span></div>
+<pre><code>const res = await fetch(`https://karopay.karon.jp/api/checkout/public/sessions/${encodeURIComponent(id)}`);
+const { ok, checkoutSession, error } = await res.json();</code></pre>
+        <p>ID を知っている人なら誰でも読めます。期限を過ぎた <code>open</code> は、読んだ時点で <code>expired</code> に変わります。存在しない ID は <code>404 CHECKOUT_SESSION_NOT_FOUND</code>。</p>
+      </section>
+
+      <section class="doc-card" id="session-object">
+        <h2>Checkout オブジェクト</h2>
+<pre><code>{
+  "id": "kcs_xxxxxxxx",
+  "checkoutUrl": "https://karopay.karon.jp/checkout/kcs_xxxxxxxx",
+  "merchant": { "id": "site_...", "name": "受取人の名前", "mcid": "受取人のMCID" },
+  "amount": 300,
+  "description": "VIP Pass（毎月）",
+  "mode": "subscription",                // "payment" | "subscription"
+  "subscription": {                      // payment のときは null
+    "id": "ksub_xxxxxxxx",               // 支払い後に入る。それまで null
+    "interval": "month",
+    "intervalCount": 1
+  },
+  "status": "paid",
+  "successUrl": "https://example.com/success.html",
+  "cancelUrl": "https://example.com/",
+  "clientReferenceId": "order:12345",
+  "payerName": "支払った人のMCID",        // 支払い後に入る
+  "transferId": "...",                   // KaroPay 内の送金 ID
+  "expiresAt": "2026-11-22T12:30:00.000Z",
+  "paidAt": "2026-11-22T12:05:12.000Z",
+  "canceledAt": null,
+  "createdAt": "2026-11-22T12:00:00.000Z"
+}</code></pre>
+        <table class="param-table">
+          <thead><tr><th>status</th><th>意味</th></tr></thead>
+          <tbody>
+            <tr><td>open</td><td>支払い待ち。期限までは <code>checkoutUrl</code> から支払える。</td></tr>
+            <tr><td>paying</td><td>処理中（ふつうは数秒で <code>paid</code> になる）。</td></tr>
+            <tr><td>paid</td><td>支払い済み。お金は受取人の口座に入っている。</td></tr>
+            <tr><td>expired</td><td>期限切れ。もう支払えない。</td></tr>
+            <tr><td>canceled</td><td>受取人が取り消した（<a href="#cancel">APIキー版</a>）。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="doc-card" id="return">
+        <h2>戻り先のクエリ</h2>
+        <p>KaroPay は戻り先の URL に次のクエリを足します（もとのクエリは残ります）。</p>
+        <table class="param-table">
+          <thead><tr><th>名前</th><th>説明</th></tr></thead>
+          <tbody>
+            <tr><td>checkout_session_id</td><td>Checkout の ID（<code>kcs_...</code>）。</td></tr>
+            <tr><td>status</td><td>successUrl では <code>paid</code>、cancelUrl では <code>canceled</code>。</td></tr>
+            <tr><td>client_reference_id</td><td>作るときに渡した注文番号（あれば）。</td></tr>
+            <tr><td>subscription_id</td><td>サブスクの契約 ID（あれば）。</td></tr>
+          </tbody>
+        </table>
+        <div class="callout danger">クエリの <code>status=paid</code> は誰でも手で書けます。これだけで商品を渡してはいけません。必ず <code>GET</code> で KaroPay に問い合わせてください。</div>
+      </section>
+
+      <section class="doc-card" id="verify">
+        <h2>支払いの確かめ方</h2>
+        <p>商品を渡す前に、KaroPay から読んだ Checkout で次の 3 つを確かめます。</p>
+        <ol>
+          <li><code>status === "paid"</code></li>
+          <li><code>amount</code> が自分の注文の金額と同じ</li>
+          <li><code>clientReferenceId</code> が自分の注文番号と同じ（＝自分が作った Checkout）</li>
+        </ol>
+        <p>サイト用コード版は、誰でも任意の金額で Checkout を作れます。安い Checkout を払って高い商品の注文番号を名乗る、といったことを防ぐため、金額と注文番号は自分の側の記録と照らします。同じ Checkout で 2 回渡さないよう、渡したことも記録してください。</p>
+        <div class="callout">ゲーム内のアイテムやランクを自動で渡すときは、ブラウザではなく自分のサーバー（またはアドオン・bot）で確かめてから渡してください。ブラウザの JavaScript は書き換えられます。このサンプルの success.html は表示のデモです。</div>
+      </section>
+
+      <section class="doc-card" id="merchant-api">
+        <h2>APIキー版（サーバーから）</h2>
+        <p>自分のサーバーから使う版です。APIキーは KaroEarth の運営が発行します（受取口座の MCID と表示名を決めて運営に頼んでください）。キーは秘密です。ブラウザのコードや公開リポジトリに入れないでください。</p>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/checkout/sessions</code><span class="auth">Bearer</span></div>
+<pre><code>const res = await fetch('https://karopay.karon.jp/api/checkout/sessions', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.KAROPAY_API_KEY}`,
+    'Content-Type': 'application/json',
+    'Idempotency-Key': orderId
+  },
+  body: JSON.stringify({
+    amount: 500,
+    description: 'VIP Rank',
+    clientReferenceId: orderId,
+    successUrl: 'https://example.com/thanks',
+    cancelUrl: 'https://example.com/cart'
+  })
+});</code></pre>
+        <p>パラメータは<a href="#params">サイト用コード版</a>と同じで、<code>receiveCode</code> は要りません（キーに結び付いた口座が受取人）。キーが無い・違うときは <code>401 UNAUTHORIZED</code>。</p>
+        <div class="endpoint"><span class="method get">GET</span><code>/api/checkout/sessions/:id</code><span class="auth">Bearer</span></div>
+        <p>自分のキーで作った Checkout だけ読めます（ほかは 404）。</p>
+
+        <h3 id="idempotency">Idempotency-Key</h3>
+        <p>ヘッダー <code>Idempotency-Key</code>（または本文の <code>idempotencyKey</code>。英数字と <code>. _ : -</code>、160 文字まで）を付けると、同じキーで送り直しても同じ Checkout を返します。通信が切れて再送しても二重に作られません。同じキーで中身の違う依頼を送ると <code>409 IDEMPOTENCY_KEY_REUSED</code>。</p>
+
+        <h3 id="cancel">取り消し</h3>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/checkout/sessions/:id/cancel</code><span class="auth">Bearer</span></div>
+        <p><code>open</code> の Checkout を <code>canceled</code> にして、もう支払えないようにします。在庫切れや注文の取りやめに使います。<code>open</code> 以外は <code>400 CHECKOUT_SESSION_NOT_PAYABLE</code>。支払い済みのお金を戻すのは<a href="#after-payment">返金</a>です。</p>
+        <p>動く例: <a href="https://github.com/karonyt/KaroPayAPISampleSite/blob/main/server-example/server.mjs"><code>server-example/server.mjs</code></a>（Node.js 18 以上・依存なし）。</p>
+      </section>
+
+      <section class="doc-card" id="payment-links">
+        <h2>決済リンク</h2>
+        <p>KaroPay の管理画面（<a href="https://karopay.karon.jp/manage">/manage</a>）で「商品」と「料金」を作り、決済リンクを発行すると、<code>https://karopay.karon.jp/pay/klink_...</code> という固定の URL ができます。</p>
+        <ul>
+          <li>同じ URL を何度でも共有できます。開いた人ごとに、30 分有効な新しい Checkout が作られます。</li>
+          <li>サイトに置くときは <code>&lt;a href="https://karopay.karon.jp/pay/klink_..."&gt;</code> にするだけです。決済リンクの API は KaroPay 自身の画面用で、ほかのサイトからは呼べません（CORS なし・<code>FORBIDDEN_ORIGIN</code>）。</li>
+          <li>決済リンクには戻り先がありません。支払いの確認は管理画面の「決済」で行います。</li>
+          <li>リンクを無効にするか、商品・料金をアーカイブすると新しい支払いを受け付けなくなります（既存の契約はそのまま）。</li>
+        </ul>
+      </section>
+
+      <section class="doc-card" id="after-payment">
+        <h2>支払い後（契約・返金）</h2>
+        <p>支払い後の管理は KaroPay の画面で行います（API キーでは操作できません）。</p>
+        <ul>
+          <li><strong>受取人</strong>（<code>/manage</code>）: 売上の概要、決済の一覧、全額・一部の返金、サブスク加入者の一覧、料金・周期の変更（次回の請求から）、即時解約・期間末の解約、顧客ごとの集計、操作履歴。</li>
+          <li><strong>購入者</strong>（<code>/subscriptions</code>）: 加入中の契約、解約、支払い明細（返金された額も見える）。</li>
+          <li>返金は受取人の残高から購入者へ戻します。返金しても契約は解約されません。</li>
+        </ul>
+      </section>
+
+      <section class="doc-card" id="errors">
+        <h2>エラー</h2>
+        <p>失敗すると <code>{ "ok": false, "error": "コード" }</code> を返します。</p>
+        <table class="param-table">
+          <thead><tr><th>コード</th><th>HTTP</th><th>意味</th></tr></thead>
+          <tbody>
+            <tr><td>CODE_REQUIRED</td><td>400</td><td>receiveCode がない。</td></tr>
+            <tr><td>CODE_NOT_FOUND</td><td>404</td><td>サイト用コードが無効（再発行された、など）。</td></tr>
+            <tr><td>INVALID_AMOUNT</td><td>400</td><td>金額が整数でない・0 以下・上限超え。</td></tr>
+            <tr><td>INVALID_SUBSCRIPTION</td><td>400</td><td>周期が day/week/month 以外、または回数が 1〜12 の外。</td></tr>
+            <tr><td>INVALID_REQUEST</td><td>400</td><td>URL が http(s) でない・長すぎる、clientReferenceId / Idempotency-Key の文字が不正。</td></tr>
+            <tr><td>UNAUTHORIZED</td><td>401</td><td>APIキーがない・違う（APIキー版）。</td></tr>
+            <tr><td>CHECKOUT_SESSION_NOT_FOUND</td><td>404</td><td>Checkout がない（APIキー版では他人の Checkout も 404）。</td></tr>
+            <tr><td>CHECKOUT_SESSION_NOT_PAYABLE</td><td>400</td><td>取り消そうとした Checkout が open でない。</td></tr>
+            <tr><td>IDEMPOTENCY_KEY_REUSED</td><td>409</td><td>同じ Idempotency-Key で違う中身を送った。</td></tr>
+            <tr><td>RATE_LIMITED</td><td>429</td><td>送りすぎ。<code>Retry-After</code>（秒）待つ。</td></tr>
+            <tr><td>INTERNAL_ERROR</td><td>500</td><td>KaroPay 側の問題。少し待って再試行。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="doc-card" id="limits">
+        <h2>制限</h2>
+        <ul>
+          <li>Checkout の作成・取り消しは、送り元 IP・同じパスごとに 1 分 80 回まで。超えると 429。</li>
+          <li>リクエスト本文は 32 KB まで。</li>
+          <li>金額の上限は 1 回 100,000,000。支払いは購入者の KaroPay（銀行）残高から行われ、足りなければ支払えません。</li>
+          <li>CORS が許されているのは <code>/api/checkout/public/sessions</code> とその下だけです。</li>
+        </ul>
+      </section>
+
+      <section class="doc-card" id="examples">
+        <h2>使い方の例</h2>
+        <p>よくある使い方を 10 個、動くページにしました。どれもこのリポジトリの <code>examples/</code> にあり、サイト用コードを入れれば本物の KaroPay で試せます。</p>
+        <p><a class="solid-button dark" href="./examples/index.html">例の一覧へ</a></p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

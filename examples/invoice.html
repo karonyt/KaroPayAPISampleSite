@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101318" />
+  <title>請求書を送る | KaroPay の使い方</title>
+  <meta name="description" content="建築の依頼や代行の代金を請求。金額と内容を入れて請求 URL を作り、相手に送る。" />
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../index.html" aria-label="KaroCraft Market">
+      <span>K</span>
+      <strong>KaroPay の使い方</strong>
+    </a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="../index.html">ショップ</a>
+      <a href="./index.html">使い方の例</a>
+      <a href="../docs.html">API ドキュメント</a>
+    </nav>
+  </header>
+
+  <main class="example-page">
+    <div>
+      <p class="hint"><a href="./index.html">使い方の例</a> / 05</p>
+      <h1>請求書を送る</h1>
+    </div>
+    <p class="example-lead">建築代行・素材集め・運搬などの依頼を受けた人が、相手に代金を請求する例です。請求の内容を URL に入れて相手に送り、相手がそのページを開いて支払います。請求 URL にはあなたのサイト用コードが入ります。</p>
+    <p class="hint">使う API: <code>POST /api/checkout/public/sessions</code> / <code>GET /api/checkout/public/sessions/:id</code> ・ <a href="https://github.com/karonyt/KaroPayAPISampleSite/blob/main/examples/invoice.html">このページのソース</a></p>
+    <section id="settings"></section>
+    <section class="panel-section" id="maker">
+      <div class="section-head"><div><p>Create</p><h2>請求を作る</h2></div></div>
+      <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr))">
+        <label><span>宛先（相手の名前）</span><input id="to" maxlength="40" placeholder="Steve" /></label>
+        <label><span>請求番号</span><input id="no" maxlength="40" /></label>
+        <label><span>金額（$）</span><input id="amount" type="number" min="1" step="1" value="3000" /></label>
+      </div>
+      <label class="field"><span>内容</span><input id="what" maxlength="80" value="和風の家の建築代行（3 階建て）" /></label>
+      <div><button class="solid-button dark" id="make" type="button">請求 URL を作る</button></div>
+      <label class="field" id="url-field" hidden><span>この URL を相手に送ってください</span><input id="url" readonly /></label>
+      <output class="inline-status" id="make-status"></output>
+    </section>
+
+    <section class="panel-section" id="bill" hidden>
+      <div class="section-head"><div><p>Invoice</p><h2 id="bill-title">請求書</h2></div><span class="badge" id="bill-badge">未払い</span></div>
+      <dl id="result-details"></dl>
+      <div><button class="solid-button" id="pay" type="button">KaroPay で支払う</button></div>
+      <output class="inline-status" id="status"></output>
+    </section>
+
+    <section class="panel-section">
+      <div class="section-head"><div><p>Points</p><h2>実装のポイント</h2></div></div>
+      <ul class="hint">
+        <li>請求番号を <code>clientReferenceId</code> にします。戻り先にも状態にもそのまま返るので、どの請求の支払いかが分かります。</li>
+        <li>サイト用コードは「どの口座に払うか」しか表さないので、請求 URL に入れて相手に渡しても大丈夫です。</li>
+        <li>請求 URL の金額は相手が書き換えられます。支払いのあとは、受取人が KaroPay の管理画面の「決済」で金額と説明を確かめてください。</li>
+        <li>同じ請求を二重に払われないよう、この例は同じ請求番号の支払い済み記録があれば「支払い済み」と出します（このブラウザの記録なので、本番は自分の側の台帳で）。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script type="module">
+import { bindCheckoutButton, el, loadHistory, loadSettings, money, mountSettings, readReturn, setStatus } from './common.js';
+
+const params = new URLSearchParams(location.search);
+const invoice = params.get('inv') ? {
+  no: params.get('inv'), to: params.get('to') || '', what: params.get('what') || '',
+  amount: Number(params.get('amount')), code: params.get('code') || ''
+} : null;
+
+// 戻ってきたときは、URL から消える前に請求を復元しておく
+const INVOICE_KEY = 'example.invoice.current';
+let current = invoice;
+if (invoice) { try { sessionStorage.setItem(INVOICE_KEY, JSON.stringify(invoice)); } catch {} }
+if (!current && params.get('checkout_session_id')) {
+  try { current = JSON.parse(sessionStorage.getItem(INVOICE_KEY) || 'null'); } catch {}
+}
+
+if (current) showBill(current);
+else showMaker();
+
+function showMaker() {
+  mountSettings();
+  document.getElementById('no').value = `INV-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${Math.floor(Math.random() * 900 + 100)}`;
+  document.getElementById('make').addEventListener('click', () => {
+    const code = loadSettings().receiveCode;
+    const status = document.getElementById('make-status');
+    const no = document.getElementById('no').value.trim();
+    const amount = Number(document.getElementById('amount').value);
+    if (!code) return setStatus(status, '先にサイト用コードを保存してください', 'error');
+    if (!/^[A-Za-z0-9._:-]{1,40}$/.test(no)) return setStatus(status, '請求番号は英数字と . _ : - だけにしてください', 'error');
+    if (!Number.isSafeInteger(amount) || amount < 1) return setStatus(status, '金額は 1 以上の整数にしてください', 'error');
+    const url = new URL(location.href);
+    url.search = new URLSearchParams({
+      inv: no, to: document.getElementById('to').value.trim(), what: document.getElementById('what').value.trim(),
+      amount: String(amount), code
+    }).toString();
+    document.getElementById('url-field').hidden = false;
+    document.getElementById('url').value = url.toString();
+    navigator.clipboard?.writeText(url.toString()).then(() => setStatus(status, 'コピーしました', 'ready'), () => {});
+  });
+}
+
+async function showBill(bill) {
+  document.getElementById('maker').hidden = true;
+  document.getElementById('settings').hidden = true;
+  document.getElementById('bill').hidden = false;
+  document.getElementById('bill-title').textContent = `請求書 ${bill.no}`;
+  const rows = [['宛先', bill.to ? `${bill.to} 様` : '—'], ['内容', bill.what || '—'], ['金額', money(bill.amount)]];
+  document.getElementById('result-details').replaceChildren(...rows.map(([k, v]) => el('div', {}, el('dt', {}, k), el('dd', {}, v))));
+
+  const status = document.getElementById('status');
+  const payButton = document.getElementById('pay');
+  const markPaid = text => {
+    const badge = document.getElementById('bill-badge');
+    badge.className = 'badge paid';
+    badge.textContent = '支払い済み';
+    payButton.hidden = true;
+    setStatus(status, text, 'ready');
+  };
+
+  const reference = `invoice:${bill.no}`;
+  const paidBefore = loadHistory().find(e => e.meta?.invoice === bill.no && e.status === 'paid');
+  if (paidBefore) markPaid('この請求はこのブラウザで支払い済みです。');
+
+  bindCheckoutButton(payButton, status, () => {
+    if (!Number.isSafeInteger(bill.amount) || bill.amount < 1) throw new Error('請求の金額が正しくありません');
+    if (!bill.code) throw new Error('請求 URL にサイト用コードがありません');
+    if (!/^[A-Za-z0-9._:-]{1,40}$/.test(bill.no)) throw new Error('請求番号の形式が正しくありません');
+    // 支払う人の設定は使わず、請求 URL に入っている請求者のサイト用コードで作る
+    return {
+      receiveCode: bill.code,
+      amount: bill.amount,
+      name: `請求 ${bill.no}`,
+      description: `請求 ${bill.no}: ${bill.what}`.slice(0, 160),
+      refPrefix: reference,
+      returnTo: 'self',
+      meta: { invoice: bill.no }
+    };
+  });
+  try {
+    const result = await readReturn();
+    if (result?.verified) markPaid(`${result.session.payerName} さんの支払いを確認しました。ありがとうございました。`);
+    else if (result?.canceled) setStatus(status, '支払いを取りやめました。');
+    else if (result) setStatus(status, `支払いを確認できませんでした（状態: ${result.session?.status}）`, 'error');
+  } catch {
+    setStatus(status, 'KaroPay に接続できませんでした', 'error');
+  }
+}
+  </script>
+</body>
+</html>

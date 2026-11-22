@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101318" />
+  <title>使い方の例 | KaroPay の使い方</title>
+  <meta name="description" content="KaroPay を使ったサイトの例 10 個" />
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../index.html" aria-label="KaroCraft Market">
+      <span>K</span>
+      <strong>KaroPay の使い方</strong>
+    </a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="../index.html">ショップ</a>
+      <a href="./index.html" aria-current="page">使い方の例</a>
+      <a href="../docs.html">API ドキュメント</a>
+    </nav>
+  </header>
+
+  <main class="example-page" style="width:min(1180px, calc(100vw - 36px))">
+    <div>
+      <h1>KaroPay の使い方の例</h1>
+    </div>
+    <p class="example-lead">KaroPay で想定している使い方を 10 個、動くページにしました。どれもサイト用コードを入れれば本物の KaroPay で試せます（実際にお金が動きます）。仕様は <a href="../docs.html">API ドキュメント</a> を見てください。</p>
+    <div class="example-grid">
+      <a class="example-card" href="./tip.html">
+        <small>01 ・ 単発・金額自由</small>
+        <strong>投げ銭・応援</strong>
+        <span>建築家や配信者への投げ銭。金額を選ぶか自由に入れて、ひとことを添えて送る。</span>
+      </a>
+      <a class="example-card" href="./supporter.html">
+        <small>02 ・ サブスク・月額</small>
+        <strong>月額サポーター</strong>
+        <span>国やギルドの運営を支える月額プラン。3 段階・月払いと 12 か月払いを切り替え。</span>
+      </a>
+      <a class="example-card" href="./cart.html">
+        <small>03 ・ 単発・まとめ買い</small>
+        <strong>カートでまとめ買い</strong>
+        <span>建材ショップ。複数の商品と数量をカートに入れ、合計を 1 回の支払いにする。</span>
+      </a>
+      <a class="example-card" href="./ticket.html">
+        <small>04 ・ 単発・期限つき</small>
+        <strong>イベントのチケット</strong>
+        <span>建築コンテストやレースの参加券。席種と枚数を選び、支払い後にチケット番号を出す。</span>
+      </a>
+      <a class="example-card" href="./invoice.html">
+        <small>05 ・ 単発・請求</small>
+        <strong>請求書を送る</strong>
+        <span>建築の依頼や代行の代金を請求。金額と内容を入れて請求 URL を作り、相手に送る。</span>
+      </a>
+      <a class="example-card" href="./rent.html">
+        <small>06 ・ サブスク・週/日</small>
+        <strong>区画・お店の賃料</strong>
+        <span>国が貸す区画や商店街のお店の賃料を、週ごと・日ごとに自動で払ってもらう。</span>
+      </a>
+      <a class="example-card" href="./pos.html">
+        <small>07 ・ 単発・QR・自動確認</small>
+        <strong>お店のレジ（QR 決済）</strong>
+        <span>店番が金額を打ち、QR を相手のスマホで読んでもらう。支払いを自動で検知して完了表示。</span>
+      </a>
+      <a class="example-card" href="./split.html">
+        <small>08 ・ 単発・複数人</small>
+        <strong>割り勘・共同購入</strong>
+        <span>ギルドで装備や土地を共同で買う。人数分の Checkout を作って配り、全員の支払いを一覧で追う。</span>
+      </a>
+      <a class="example-card" href="./links.html">
+        <small>09 ・ コード不要</small>
+        <strong>決済リンクを並べるだけ</strong>
+        <span>KaroPay の管理画面で作った決済リンクを、ボタンにして置くだけ。API もサイト用コードも要らない。</span>
+      </a>
+      <a class="example-card" href="./server.html">
+        <small>10 ・ サーバー・APIキー</small>
+        <strong>ゲーム内アイテムの自動受け渡し</strong>
+        <span>自分のサーバーで Checkout を作り、支払いを確かめてからゲーム内で 1 回だけアイテムを渡す。</span>
+      </a>
+    </div>
+  </main>
+</body>
+</html>

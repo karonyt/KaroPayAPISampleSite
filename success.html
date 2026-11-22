@@ -13,7 +13,11 @@
       <span>K</span>
       <strong>KaroCraft Market</strong>
     </a>
-    <a class="plain-link" href="./index.html">ショップ</a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="./index.html">ショップ</a>
+      <a href="./examples/index.html">使い方の例</a>
+      <a href="./docs.html">API ドキュメント</a>
+    </nav>
   </header>
 
   <main class="result-shell">
@@ -21,9 +25,14 @@
       <div class="result-icon">K</div>
       <p>Checking</p>
       <h1>支払い確認中</h1>
-      <span id="result-message">KaroPayの取引状態を確認しています</span>
+      <span id="result-message">KaroPay の取引状態を確認しています</span>
       <dl id="result-details"></dl>
-      <a class="primary-link" href="./index.html">戻る</a>
+      <div class="result-actions">
+        <button type="button" class="ghost-button" id="recheck" hidden>もう一度確認</button>
+        <a class="primary-link" id="pay-again" href="./index.html" hidden>支払いへ戻る</a>
+        <a class="primary-link" href="./index.html">ショップへ</a>
+      </div>
+      <small class="result-note">この画面の表示はデモです。商品を渡す処理は、必ず自分のサーバーで KaroPay に問い合わせてから行ってください（<a href="./docs.html#verify">ドキュメント</a>）。</small>
     </section>
   </main>
 

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#101318" />
   <title>KaroCraft Market</title>
+  <meta name="description" content="KaroPay Checkout API のサンプルショップ（単品購入・サブスク・決済リンク）" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -13,41 +14,121 @@
       <span>K</span>
       <strong>KaroCraft Market</strong>
     </a>
-    <form class="shop-config" id="shop-config">
-      <label>
-        <span>KaroPay URL</span>
-        <input id="api-base" name="apiBase" autocomplete="off" />
-      </label>
-      <label>
-        <span>サイト用コード</span>
-        <input id="receive-code" name="receiveCode" autocomplete="off" />
-      </label>
-      <button type="submit">保存</button>
-    </form>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="./index.html" aria-current="page">ショップ</a>
+      <a href="./examples/index.html">使い方の例</a>
+      <a href="./docs.html">API ドキュメント</a>
+    </nav>
   </header>
 
   <main>
     <section class="hero">
       <img src="./assets/shop-hero.png" alt="ゲーム内ショップの商品ディスプレイ" />
       <div class="hero-copy">
-        <p>Digital Goods</p>
+        <p>KaroPay Checkout Sample</p>
         <h1>KaroCraft Market</h1>
-        <span>ランク、ジェム、建築キットをKaroPayで販売</span>
+        <span>単品購入・サブスク・決済リンクを KaroPay で受け付けるサンプルショップです。</span>
       </div>
     </section>
 
-    <section class="product-section" aria-label="商品一覧">
+    <div class="notice" id="return-notice" hidden></div>
+
+    <section class="panel-section" aria-labelledby="config-title">
       <div class="section-head">
         <div>
-          <p>Shop Items</p>
-          <h2>商品</h2>
+          <p>Settings</p>
+          <h2 id="config-title">接続設定</h2>
         </div>
         <output id="shop-status">設定を保存してください</output>
       </div>
+      <form class="shop-config" id="shop-config">
+        <label>
+          <span>KaroPay URL</span>
+          <input id="api-base" name="apiBase" autocomplete="off" inputmode="url" />
+        </label>
+        <label>
+          <span>サイト用コード</span>
+          <input id="receive-code" name="receiveCode" autocomplete="off" placeholder="KaroPay の「受け取り」画面でコピー" />
+        </label>
+        <label>
+          <span>支払い期限（分）</span>
+          <input id="ttl" name="expiresInMinutes" type="number" min="1" max="1440" step="1" />
+        </label>
+        <button type="submit">保存</button>
+      </form>
+      <p class="hint">売上はサイト用コードの持ち主の KaroPay 口座に入ります。コードは KaroPay にログインして「受け取り」画面から取れます。詳しくは <a href="./docs.html#receive-code">ドキュメント</a>。</p>
+    </section>
 
+    <section class="product-section" aria-labelledby="items-title">
+      <div class="section-head">
+        <div>
+          <p>One-time</p>
+          <h2 id="items-title">単品購入</h2>
+        </div>
+        <code class="api-tag">mode: "payment"</code>
+      </div>
       <div class="product-grid" id="product-grid"></div>
     </section>
+
+    <section class="product-section" aria-labelledby="plans-title">
+      <div class="section-head">
+        <div>
+          <p>Subscription</p>
+          <h2 id="plans-title">サブスク</h2>
+        </div>
+        <code class="api-tag">mode: "subscription"</code>
+      </div>
+      <p class="hint">加入すると、決めた周期ごとに KaroPay が自動で請求します。解約は購入者が KaroPay の「サブスク」画面から、または受取人が管理画面から行います。</p>
+      <div class="product-grid" id="plan-grid"></div>
+    </section>
+
+    <section class="panel-section" aria-labelledby="link-title">
+      <div class="section-head">
+        <div>
+          <p>Payment Link</p>
+          <h2 id="link-title">決済リンク</h2>
+        </div>
+        <code class="api-tag">/pay/&lt;linkId&gt;</code>
+      </div>
+      <p class="hint">KaroPay の管理画面（<code>/manage</code>）で作った決済リンクは、そのまま共有できる固定 URL です。開くたびに新しい Checkout が作られます。サイトに置くときはリンクにするだけで、API を呼ぶ必要はありません。</p>
+      <form class="link-form" id="link-form">
+        <label>
+          <span>決済リンク（URL または klink_ で始まる ID）</span>
+          <input id="link-input" autocomplete="off" placeholder="https://karopay.karon.jp/pay/klink_..." />
+        </label>
+        <button type="submit">リンクを開く</button>
+      </form>
+      <output class="inline-status" id="link-status"></output>
+    </section>
+
+    <section class="panel-section" aria-labelledby="history-title">
+      <div class="section-head">
+        <div>
+          <p>History</p>
+          <h2 id="history-title">このブラウザで作った取引</h2>
+        </div>
+        <div class="head-actions">
+          <button type="button" class="ghost-button" id="refresh-history">状態を更新</button>
+          <button type="button" class="ghost-button" id="clear-history">消去</button>
+        </div>
+      </div>
+      <p class="hint">デモのため、このブラウザに記録しています。<code>GET /api/checkout/public/sessions/:id</code> で最新の状態を読みます。本番では自分のサーバーの DB に記録してください。</p>
+      <div class="table-wrap">
+        <table class="history-table">
+          <thead>
+            <tr><th>商品</th><th>種類</th><th>金額</th><th>状態</th><th>作成</th><th></th></tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </div>
+      <p class="empty" id="history-empty">まだありません</p>
+    </section>
   </main>
+
+  <footer class="site-footer">
+    <span>このサイトは KaroPay API のサンプルです。実際の KaroPay 口座のお金が動きます。</span>
+    <a href="https://github.com/karonyt/KaroPayAPISampleSite">GitHub</a>
+  </footer>
 
   <template id="product-card-template">
     <article class="product-card">

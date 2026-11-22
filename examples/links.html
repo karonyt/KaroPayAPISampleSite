@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101318" />
+  <title>決済リンクを並べるだけ | KaroPay の使い方</title>
+  <meta name="description" content="KaroPay の管理画面で作った決済リンクを、ボタンにして置くだけ。API もサイト用コードも要らない。" />
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../index.html" aria-label="KaroCraft Market">
+      <span>K</span>
+      <strong>KaroPay の使い方</strong>
+    </a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="../index.html">ショップ</a>
+      <a href="./index.html">使い方の例</a>
+      <a href="../docs.html">API ドキュメント</a>
+    </nav>
+  </header>
+
+  <main class="example-page">
+    <div>
+      <p class="hint"><a href="./index.html">使い方の例</a> / 09</p>
+      <h1>決済リンクを並べるだけ</h1>
+    </div>
+    <p class="example-lead">いちばん簡単な使い方です。KaroPay の管理画面（/manage）で商品と料金を作って決済リンクを発行し、その URL をボタンにします。プログラムは要りません。Discord の告知や看板の QR にもそのまま使えます。</p>
+    <p class="hint">使う API: <code>https://karopay.karon.jp/pay/klink_...（リンクのみ）</code> ・ <a href="https://github.com/karonyt/KaroPayAPISampleSite/blob/main/examples/links.html">このページのソース</a></p>
+    <section class="panel-section">
+      <div class="section-head"><div><p>How to</p><h2>リンクの作り方</h2></div></div>
+      <ol class="hint">
+        <li><a href="https://karopay.karon.jp/manage" target="_blank" rel="noopener">KaroPay の管理画面</a>にログインする。</li>
+        <li>「商品・料金」で商品を作り、料金（1 回払い、または毎月などの継続）を足す。</li>
+        <li>「決済リンク」で料金を選んでリンクを作り、URL をコピーする。</li>
+        <li>下の欄に貼ると、サイトに置くボタンの HTML ができます。</li>
+      </ol>
+    </section>
+    <section class="panel-section">
+      <div class="section-head"><div><p>Builder</p><h2>ボタンを作る</h2></div></div>
+      <div class="form-grid" style="grid-template-columns: minmax(0,1fr) minmax(0,1fr)">
+        <label><span>ボタンの文字</span><input id="label" maxlength="40" value="VIP Pass に加入する" /></label>
+        <label><span>決済リンクの URL</span><input id="url" placeholder="https://karopay.karon.jp/pay/klink_..." /></label>
+      </div>
+      <output class="inline-status" id="status"></output>
+      <div class="choice-row" id="preview"></div>
+      <pre class="code-block" id="code"></pre>
+    </section>
+    <section class="panel-section">
+      <div class="section-head"><div><p>Sample</p><h2>置いたときの見た目</h2></div></div>
+      <div class="tier-grid">
+        <article class="tier"><h3>建材セット</h3><div class="price">$800</div><a class="solid-button" href="https://karopay.karon.jp/pay/klink_YOUR_LINK_1">買う</a></article>
+        <article class="tier"><h3>VIP Pass</h3><div class="price">$300 <small>/ 毎月</small></div><a class="solid-button" href="https://karopay.karon.jp/pay/klink_YOUR_LINK_2">加入する</a></article>
+      </div>
+      <p class="hint">この見本のリンク（klink_YOUR_LINK_…）は実在しないので、押すと「リンクが無効」と出ます。</p>
+    </section>
+
+    <section class="panel-section">
+      <div class="section-head"><div><p>Points</p><h2>実装のポイント</h2></div></div>
+      <ul class="hint">
+        <li>決済リンクは何度でも使える固定の URL です。開いた人ごとに、30 分有効な新しい Checkout が作られます。</li>
+        <li>サブスクの料金で作ったリンクなら、開いた人はサブスクに加入します。</li>
+        <li>値段を変えたいときは、管理画面で新しい料金を追加してリンクを作り直します（料金は上書きされず、前のリンクの値段は変わりません）。</li>
+        <li>決済リンクには戻り先がありません。誰が払ったかは管理画面の「決済」「顧客」で見ます。</li>
+        <li>決済リンクの API は KaroPay 自身の画面用で、ほかのサイトから <code>fetch</code> では呼べません。リンクにするだけにしてください。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script type="module">
+import { el, setStatus } from './common.js';
+
+const label = document.getElementById('label');
+const url = document.getElementById('url');
+const status = document.getElementById('status');
+const escapeHtml = text => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function render() {
+  const preview = document.getElementById('preview');
+  const code = document.getElementById('code');
+  let link = null;
+  try {
+    const u = new URL(url.value.trim());
+    if (u.protocol === 'https:' && /^\/pay\/klink_[A-Za-z0-9_-]+$/.test(u.pathname)) link = u.toString();
+  } catch {}
+  if (!url.value.trim()) setStatus(status, '決済リンクの URL を貼ってください');
+  else if (!link) setStatus(status, 'https://…/pay/klink_… の形の URL を貼ってください', 'error');
+  else setStatus(status, 'このボタンをサイトに置けます', 'ready');
+
+  const text = label.value.trim() || 'KaroPay で支払う';
+  const href = link || 'https://karopay.karon.jp/pay/klink_...';
+  preview.replaceChildren(el('a', { class: 'solid-button', href, target: '_blank', rel: 'noopener' }, text));
+  code.textContent = `<a href="${escapeHtml(href)}" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#e60012;color:#fff;font-weight:700;text-decoration:none">${escapeHtml(text)}</a>`;
+}
+label.addEventListener('input', render);
+url.addEventListener('input', render);
+render();
+  </script>
+</body>
+</html>

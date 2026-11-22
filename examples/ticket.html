@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101318" />
+  <title>イベントのチケット | KaroPay の使い方</title>
+  <meta name="description" content="建築コンテストやレースの参加券。席種と枚数を選び、支払い後にチケット番号を出す。" />
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../index.html" aria-label="KaroCraft Market">
+      <span>K</span>
+      <strong>KaroPay の使い方</strong>
+    </a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="../index.html">ショップ</a>
+      <a href="./index.html">使い方の例</a>
+      <a href="../docs.html">API ドキュメント</a>
+    </nav>
+  </header>
+
+  <main class="example-page">
+    <div>
+      <p class="hint"><a href="./index.html">使い方の例</a> / 04</p>
+      <h1>イベントのチケット</h1>
+    </div>
+    <p class="example-lead">ゲーム内イベントの参加券を売る例です。支払い期限を 10 分と短くし、戻ってきたら KaroPay に問い合わせて、支払い済みならその場でチケット番号を出します。受付ではチケット番号と MCID を照らします。</p>
+    <p class="hint">使う API: <code>POST /api/checkout/public/sessions（expiresInMinutes）</code> / <code>GET /api/checkout/public/sessions/:id</code> ・ <a href="https://github.com/karonyt/KaroPayAPISampleSite/blob/main/examples/ticket.html">このページのソース</a></p>
+    <section id="settings"></section>
+    <section class="panel-section">
+      <div class="section-head"><div><p>Event</p><h2>第 3 回 KaroEarth 建築コンテスト</h2></div><code class="api-tag">12/6（土）20:00〜 首都広場</code></div>
+      <div class="form-grid" style="grid-template-columns: minmax(0,1fr) minmax(0,140px)">
+        <label><span>席種</span>
+          <select id="seat">
+            <option value="entry" data-price="500">参加者（作品を出す） $500</option>
+            <option value="audience" data-price="100">観客席 $100</option>
+            <option value="vip" data-price="800">観客 VIP（最前列） $800</option>
+          </select>
+        </label>
+        <label><span>枚数</span><input id="qty" type="number" min="1" max="10" value="1" /></label>
+      </div>
+      <div class="total-row"><span>合計 <span id="total"></span></span><button class="solid-button" id="buy" type="button">チケットを買う</button></div>
+      <p class="hint">支払いページは 10 分で期限切れになります。</p>
+      <output class="inline-status" id="status"></output>
+    </section>
+    <section class="panel-section" id="ticket" hidden>
+      <div class="section-head"><div><p>Your ticket</p><h2>チケット</h2></div></div>
+      <div class="qr-box">
+        <strong style="font-size:28px; letter-spacing:.08em" id="ticket-no"></strong>
+        <span class="hint" id="ticket-info"></span>
+      </div>
+    </section>
+
+    <section class="panel-section">
+      <div class="section-head"><div><p>Points</p><h2>実装のポイント</h2></div></div>
+      <ul class="hint">
+        <li><code>expiresInMinutes: 10</code> で、席を押さえたまま放置されるのを防ぎます（最大 1440 分）。</li>
+        <li><code>successUrl</code> をこのページにして、戻ってきたら <code>checkout_session_id</code> で状態を読みます。クエリの <code>status=paid</code> だけでは信じません。</li>
+        <li>チケット番号は Checkout の ID から作っています。本物のイベントでは、自分のサーバーで番号を発行して保存し、<code>payerName</code>（支払った人の MCID）と結び付けます。</li>
+        <li>期限が切れた Checkout は読んだ時点で <code>expired</code> になります。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script type="module">
+import { bindCheckoutButton, dateText, money, mountSettings, readReturn, setStatus } from './common.js';
+
+mountSettings();
+const seat = document.getElementById('seat');
+const qty = document.getElementById('qty');
+const status = document.getElementById('status');
+const price = () => Number(seat.selectedOptions[0].dataset.price);
+const count = () => Math.min(10, Math.max(1, Math.trunc(Number(qty.value)) || 1));
+const update = () => { document.getElementById('total').textContent = money(price() * count()); };
+seat.addEventListener('change', update);
+qty.addEventListener('input', update);
+update();
+
+bindCheckoutButton(document.getElementById('buy'), status, () => {
+  const label = seat.selectedOptions[0].textContent.replace(/\s*\$\d+$/, '');
+  return {
+    amount: price() * count(),
+    name: `建築コンテスト ${label} ×${count()}`,
+    description: `第3回建築コンテスト ${label} ×${count()}`,
+    refPrefix: `ticket-${seat.value}`,
+    expiresInMinutes: 10,
+    returnTo: 'self',
+    meta: { seat: seat.value, qty: count() }
+  };
+});
+
+try {
+  const result = await readReturn();
+  if (result?.verified) {
+    const { session, entry } = result;
+    document.getElementById('ticket').hidden = false;
+    document.getElementById('ticket-no').textContent = `T-${session.id.slice(4, 12).toUpperCase()}`;
+    document.getElementById('ticket-info').textContent =
+      `${entry.name} ／ ${session.payerName} ／ ${dateText(session.paidAt)} 支払い`;
+    setStatus(status, '支払いを確認しました。当日はこの番号を受付で見せてください。', 'ready');
+  } else if (result?.canceled) {
+    setStatus(status, '購入を取りやめました。');
+  } else if (result) {
+    setStatus(status, `支払いを確認できませんでした（状態: ${result.session?.status}）`, 'error');
+  }
+} catch {
+  setStatus(status, 'KaroPay に接続できませんでした', 'error');
+}
+  </script>
+</body>
+</html>

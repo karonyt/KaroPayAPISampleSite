@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101318" />
+  <title>月額サポーター | KaroPay の使い方</title>
+  <meta name="description" content="国やギルドの運営を支える月額プラン。3 段階・月払いと 12 か月払いを切り替え。" />
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../index.html" aria-label="KaroCraft Market">
+      <span>K</span>
+      <strong>KaroPay の使い方</strong>
+    </a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="../index.html">ショップ</a>
+      <a href="./index.html">使い方の例</a>
+      <a href="../docs.html">API ドキュメント</a>
+    </nav>
+  </header>
+
+  <main class="example-page">
+    <div>
+      <p class="hint"><a href="./index.html">使い方の例</a> / 02</p>
+      <h1>月額サポーター</h1>
+    </div>
+    <p class="example-lead">国・ギルド・建築チームなどが、運営費を月額で集める例です。加入すると毎月（または 12 か月ごと）に KaroPay が自動で請求します。解約は加入者が KaroPay の「サブスク」画面からいつでもできます。</p>
+    <p class="hint">使う API: <code>POST /api/checkout/public/sessions（mode: subscription）</code> ・ <a href="https://github.com/karonyt/KaroPayAPISampleSite/blob/main/examples/supporter.html">このページのソース</a></p>
+    <section id="settings"></section>
+    <section class="panel-section">
+      <div class="section-head">
+        <div><p>Supporters</p><h2>カロン王国サポーター</h2></div>
+        <div class="choice-row" id="billing">
+          <button type="button" data-count="1" aria-pressed="true">毎月</button>
+          <button type="button" data-count="12" aria-pressed="false">12 か月ごと（2 か月分お得）</button>
+        </div>
+      </div>
+      <div class="tier-grid" id="tiers"></div>
+      <output class="inline-status" id="status"></output>
+    </section>
+
+    <section class="panel-section">
+      <div class="section-head"><div><p>Points</p><h2>実装のポイント</h2></div></div>
+      <ul class="hint">
+        <li><code>mode: "subscription"</code> と <code>subscription: { interval, intervalCount }</code> を付けるだけでサブスクになります。12 か月払いは <code>month</code> × 12 です。</li>
+        <li>最初の支払いで契約（<code>ksub_...</code>）ができ、戻り先に <code>subscription_id</code> が付きます。特典を渡すときはこの ID と加入者の MCID（<code>payerName</code>）を記録します。</li>
+        <li>料金を変えたいときは受取人が <code>/manage</code> の「サブスク」で変更します。既存の加入者は次回の請求から新しい料金になります。</li>
+        <li>請求に失敗した契約は <code>past_due</code> になります。特典を止めるかどうかは、管理画面の加入者一覧で判断します。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script type="module">
+import { bindCheckoutButton, el, intervalLabel, mountSettings, money } from './common.js';
+
+mountSettings();
+const tiers = [
+  { id: 'bronze', name: 'ブロンズ', monthly: 100, perks: ['サポーター名簿に名前', 'Discord のロール'] },
+  { id: 'silver', name: 'シルバー', monthly: 300, perks: ['ブロンズの特典', '国の掲示板に名前を掲示', '月 1 回の建材配布'] },
+  { id: 'gold', name: 'ゴールド', monthly: 1000, perks: ['シルバーの特典', '首都に記念の看板', '新しい区画を先行で選べる'] }
+];
+let count = 1;
+const status = document.getElementById('status');
+const host = document.getElementById('tiers');
+
+function priceFor(tier) {
+  return count === 12 ? tier.monthly * 10 : tier.monthly; // 12 か月払いは 10 か月分
+}
+
+function render() {
+  host.replaceChildren();
+  for (const tier of tiers) {
+    const button = el('button', { class: 'solid-button', type: 'button' }, '加入する');
+    host.append(el('article', { class: 'tier' },
+      el('h3', {}, tier.name),
+      el('div', { class: 'price' }, `${money(priceFor(tier))} `, el('small', {}, `/ ${intervalLabel('month', count)}`)),
+      el('ul', {}, tier.perks.map(perk => el('li', {}, perk))),
+      button));
+    bindCheckoutButton(button, status, () => ({
+      amount: priceFor(tier),
+      name: `サポーター ${tier.name}`,
+      description: `カロン王国サポーター ${tier.name}（${intervalLabel('month', count)}）`,
+      refPrefix: `supporter-${tier.id}`,
+      mode: 'subscription',
+      subscription: { interval: 'month', intervalCount: count }
+    }));
+  }
+}
+
+for (const button of document.querySelectorAll('#billing button')) {
+  button.addEventListener('click', () => {
+    count = Number(button.dataset.count);
+    for (const b of document.querySelectorAll('#billing button')) b.setAttribute('aria-pressed', String(b === button));
+    render();
+  });
+}
+render();
+  </script>
+</body>
+</html>

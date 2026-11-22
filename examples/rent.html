@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101318" />
+  <title>区画・お店の賃料 | KaroPay の使い方</title>
+  <meta name="description" content="国が貸す区画や商店街のお店の賃料を、週ごと・日ごとに自動で払ってもらう。" />
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../index.html" aria-label="KaroCraft Market">
+      <span>K</span>
+      <strong>KaroPay の使い方</strong>
+    </a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="../index.html">ショップ</a>
+      <a href="./index.html">使い方の例</a>
+      <a href="../docs.html">API ドキュメント</a>
+    </nav>
+  </header>
+
+  <main class="example-page">
+    <div>
+      <p class="hint"><a href="./index.html">使い方の例</a> / 06</p>
+      <h1>区画・お店の賃料</h1>
+    </div>
+    <p class="example-lead">国が持っている区画（プロット）や商店街の店舗を貸し出し、賃料を継続課金で受け取る例です。週払い・2 週払い・日払いを選べます。借り手が解約すると次の請求は起きません。</p>
+    <p class="hint">使う API: <code>POST /api/checkout/public/sessions（mode: subscription, interval: week / day）</code> ・ <a href="https://github.com/karonyt/KaroPayAPISampleSite/blob/main/examples/rent.html">このページのソース</a></p>
+    <section id="settings"></section>
+    <section class="panel-section">
+      <div class="section-head"><div><p>Plots</p><h2>カロン商店街 空き区画</h2></div></div>
+      <div class="form-grid" style="grid-template-columns: minmax(0,1fr) minmax(0,1fr)">
+        <label><span>区画</span><select id="plot"></select></label>
+        <label><span>支払い方</span>
+          <select id="cycle">
+            <option value="week:1">毎週</option>
+            <option value="week:2">2 週ごと</option>
+            <option value="day:1">毎日</option>
+          </select>
+        </label>
+      </div>
+      <div class="total-row"><span id="price"></span><button class="solid-button" id="rent" type="button">借りる</button></div>
+      <p class="hint" id="plot-info"></p>
+      <output class="inline-status" id="status"></output>
+    </section>
+
+    <section class="panel-section">
+      <div class="section-head"><div><p>Points</p><h2>実装のポイント</h2></div></div>
+      <ul class="hint">
+        <li><code>interval</code> は <code>day</code> / <code>week</code> / <code>month</code>、<code>intervalCount</code> は 1〜12。2 週ごとは <code>week</code> × 2 です。</li>
+        <li>区画の番号を <code>clientReferenceId</code> に入れると、契約（<code>ksub_...</code>）と区画を結び付けられます。</li>
+        <li>支払いが止まった契約は <code>past_due</code> になり、およそ 6 時間ごとに請求をやり直します。区画の権限を外すかどうかは、受取人が管理画面の加入者一覧を見て決めます。</li>
+        <li>賃料を上げるときは <code>/manage</code> の「サブスク」で契約ごとに変更でき、次回の請求から新しい額になります。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script type="module">
+import { bindCheckoutButton, el, intervalLabel, money, mountSettings } from './common.js';
+
+mountSettings();
+// 賃料は「1 週あたり」で決め、周期に合わせて計算する
+const plots = [
+  { id: 'A-01', name: 'A-01 角地（16×16）', weekly: 700, note: '大通りと広場の角。人通りが一番多い。' },
+  { id: 'A-04', name: 'A-04 通り沿い（12×16）', weekly: 450, note: '大通り沿い。2 階建てまで。' },
+  { id: 'B-02', name: 'B-02 裏通り（10×10）', weekly: 200, note: '静かな裏通り。倉庫や工房向け。' }
+];
+const plot = document.getElementById('plot');
+const cycle = document.getElementById('cycle');
+for (const p of plots) plot.append(el('option', { value: p.id }, p.name));
+
+function current() {
+  const p = plots.find(x => x.id === plot.value);
+  const [interval, count] = cycle.value.split(':');
+  const intervalCount = Number(count);
+  const amount = interval === 'day' ? Math.ceil(p.weekly / 7) : p.weekly * intervalCount;
+  return { p, interval, intervalCount, amount };
+}
+function render() {
+  const { p, interval, intervalCount, amount } = current();
+  document.getElementById('price').textContent = `${money(amount)} / ${intervalLabel(interval, intervalCount)}`;
+  document.getElementById('plot-info').textContent = p.note;
+}
+plot.addEventListener('change', render);
+cycle.addEventListener('change', render);
+render();
+
+bindCheckoutButton(document.getElementById('rent'), document.getElementById('status'), () => {
+  const { p, interval, intervalCount, amount } = current();
+  return {
+    amount,
+    name: `区画 ${p.id} 賃料`,
+    description: `カロン商店街 区画 ${p.id} 賃料（${intervalLabel(interval, intervalCount)}）`,
+    refPrefix: `plot-${p.id}`,
+    mode: 'subscription',
+    subscription: { interval, intervalCount },
+    meta: { plot: p.id }
+  };
+});
+  </script>
+</body>
+</html>

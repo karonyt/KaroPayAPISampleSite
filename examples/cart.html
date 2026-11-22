@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101318" />
+  <title>カートでまとめ買い | KaroPay の使い方</title>
+  <meta name="description" content="建材ショップ。複数の商品と数量をカートに入れ、合計を 1 回の支払いにする。" />
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../index.html" aria-label="KaroCraft Market">
+      <span>K</span>
+      <strong>KaroPay の使い方</strong>
+    </a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="../index.html">ショップ</a>
+      <a href="./index.html">使い方の例</a>
+      <a href="../docs.html">API ドキュメント</a>
+    </nav>
+  </header>
+
+  <main class="example-page">
+    <div>
+      <p class="hint"><a href="./index.html">使い方の例</a> / 03</p>
+      <h1>カートでまとめ買い</h1>
+    </div>
+    <p class="example-lead">建材や道具を売るお店の例です。Checkout は 1 回 1 金額なので、カートの合計を 1 つの Checkout にします。内訳は説明に入れ、注文の中身は自分の側（ここではこのブラウザ）に注文番号と一緒に残します。</p>
+    <p class="hint">使う API: <code>POST /api/checkout/public/sessions</code> / <code>GET /api/checkout/public/sessions/:id</code> ・ <a href="https://github.com/karonyt/KaroPayAPISampleSite/blob/main/examples/cart.html">このページのソース</a></p>
+    <section id="settings"></section>
+    <section class="panel-section">
+      <div class="section-head"><div><p>Shop</p><h2>カロン建材店</h2></div></div>
+      <div class="line-items" id="catalog"></div>
+    </section>
+    <section class="panel-section">
+      <div class="section-head"><div><p>Cart</p><h2>カート</h2></div><button class="ghost-button" id="clear" type="button">空にする</button></div>
+      <div class="line-items" id="cart"></div>
+      <p class="empty" id="empty">カートは空です</p>
+      <div class="total-row"><span>合計 <span id="total">$0</span></span><button class="solid-button" id="pay" type="button">KaroPay で支払う</button></div>
+      <output class="inline-status" id="status"></output>
+    </section>
+
+    <section class="panel-section">
+      <div class="section-head"><div><p>Points</p><h2>実装のポイント</h2></div></div>
+      <ul class="hint">
+        <li>合計金額は自分で計算して <code>amount</code> に入れます。KaroPay は内訳を持たないので、注文の中身は <code>clientReferenceId</code> をキーにして自分の側に保存します。</li>
+        <li><code>description</code> は 160 文字までです。商品が多いときは「ほか N 点」と縮めます。</li>
+        <li>戻ってきたら金額と注文番号を照らして、合っていればカートを空にします（共通の結果ページ success.html を使っています）。</li>
+        <li>在庫を確保するなら、<code>expiresInMinutes</code> を短くして、期限切れになったら在庫を戻します。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script type="module">
+import { bindCheckoutButton, el, loadHistory, mountSettings, money, updateHistory } from './common.js';
+
+mountSettings();
+const catalog = [
+  { id: 'stone', name: '石レンガ ×64', price: 40 },
+  { id: 'glass', name: '色付きガラス ×64', price: 60 },
+  { id: 'oak', name: 'オークの原木 ×64', price: 35 },
+  { id: 'lantern', name: 'ランタン ×16', price: 120 },
+  { id: 'pickaxe', name: 'ダイヤのツルハシ（効率 V）', price: 900 }
+];
+const CART_KEY = 'example.cart';
+let cart = load();
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(CART_KEY) || '{}'); } catch { return {}; }
+}
+function save() {
+  try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
+}
+function lines() {
+  return catalog.filter(item => cart[item.id] > 0).map(item => ({ ...item, qty: cart[item.id] }));
+}
+function total() {
+  return lines().reduce((sum, line) => sum + line.price * line.qty, 0);
+}
+function change(id, delta) {
+  cart[id] = Math.max(0, Math.min(99, (cart[id] || 0) + delta));
+  if (!cart[id]) delete cart[id];
+  save();
+  render();
+}
+
+function render() {
+  const catalogHost = document.getElementById('catalog');
+  catalogHost.replaceChildren(...catalog.map(item => el('div', { class: 'line-item' },
+    el('span', {}, item.name), el('strong', {}, money(item.price)),
+    el('button', { class: 'ghost-button', type: 'button', onclick: () => change(item.id, 1) }, 'カートへ'))));
+
+  const cartHost = document.getElementById('cart');
+  cartHost.replaceChildren(...lines().map(line => el('div', { class: 'line-item' },
+    el('span', {}, line.name),
+    el('span', { class: 'qty' },
+      el('button', { type: 'button', 'aria-label': '減らす', onclick: () => change(line.id, -1) }, '−'),
+      String(line.qty),
+      el('button', { type: 'button', 'aria-label': '増やす', onclick: () => change(line.id, 1) }, '+')),
+    el('strong', {}, money(line.price * line.qty)))));
+  document.getElementById('empty').hidden = lines().length > 0;
+  document.getElementById('total').textContent = money(total());
+  document.getElementById('pay').disabled = total() === 0;
+}
+
+function summary(items) {
+  let text = items.map(line => `${line.name}×${line.qty}`).join('、');
+  if (text.length > 150) text = `${items[0].name}×${items[0].qty} ほか ${items.length - 1} 点`;
+  return `カロン建材店: ${text}`;
+}
+
+document.getElementById('clear').addEventListener('click', () => { cart = {}; save(); render(); });
+bindCheckoutButton(document.getElementById('pay'), document.getElementById('status'), () => {
+  const items = lines();
+  if (!items.length) throw new Error('カートが空です');
+  return {
+    amount: total(),
+    name: `建材 ${items.length} 種`,
+    description: summary(items),
+    refPrefix: 'cart',
+    expiresInMinutes: 15,
+    meta: { items: items.map(({ id, qty, price }) => ({ id, qty, price })) }
+  };
+});
+
+// 結果ページ（success.html）で支払い済みになった注文があれば、一度だけカートを空にする
+const last = loadHistory().find(entry => entry.page === 'cart.html');
+if (last?.status === 'paid' && !last.meta?.cleared) {
+  cart = {};
+  save();
+  updateHistory(last.id, { meta: { ...last.meta, cleared: true } });
+}
+render();
+  </script>
+</body>
+</html>

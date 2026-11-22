@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101318" />
+  <title>ゲーム内アイテムの自動受け渡し | KaroPay の使い方</title>
+  <meta name="description" content="自分のサーバーで Checkout を作り、支払いを確かめてからゲーム内で 1 回だけアイテムを渡す。" />
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../index.html" aria-label="KaroCraft Market">
+      <span>K</span>
+      <strong>KaroPay の使い方</strong>
+    </a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="../index.html">ショップ</a>
+      <a href="./index.html">使い方の例</a>
+      <a href="../docs.html">API ドキュメント</a>
+    </nav>
+  </header>
+
+  <main class="example-page">
+    <div>
+      <p class="hint"><a href="./index.html">使い方の例</a> / 10</p>
+      <h1>ゲーム内アイテムの自動受け渡し</h1>
+    </div>
+    <p class="example-lead">ランクやアイテムを自動で渡すときの、いちばん安全な形です。金額はサーバーが決め、APIキーで Checkout を作り、支払いはサーバーが KaroPay に問い合わせて確かめます。ブラウザは書き換えられるので、渡す判断をブラウザにさせません。動くサーバーの例は server-example/server.mjs にあります。</p>
+    <p class="hint">使う API: <code>POST /api/checkout/sessions（Bearer・Idempotency-Key）</code> / <code>GET /api/checkout/sessions/:id</code> / <code>POST /api/checkout/sessions/:id/cancel</code> ・ <a href="https://github.com/karonyt/KaroPayAPISampleSite/blob/main/examples/server.html">このページのソース</a></p>
+    <section class="panel-section">
+      <div class="section-head"><div><p>Flow</p><h2>流れ</h2></div></div>
+      <svg viewBox="0 0 760 250" role="img" aria-label="購入者・自分のサーバー・KaroPay・ゲームのやりとり" style="width:100%;height:auto;font:13px system-ui;font-weight:700">
+        <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#68707d"/></marker></defs>
+        <g fill="#16191f" text-anchor="middle">
+          <rect x="10" y="10" width="140" height="36" rx="8" fill="#f2f5f8"/><text x="80" y="33">購入者のブラウザ</text>
+          <rect x="210" y="10" width="140" height="36" rx="8" fill="#e8fbf8"/><text x="280" y="33">自分のサーバー</text>
+          <rect x="410" y="10" width="140" height="36" rx="8" fill="#fff0f1"/><text x="480" y="33">KaroPay</text>
+          <rect x="610" y="10" width="140" height="36" rx="8" fill="#fff6e0"/><text x="680" y="33">ゲーム（bot・アドオン）</text>
+        </g>
+        <g stroke="#dfe4ea" stroke-dasharray="4 4"><line x1="80" y1="46" x2="80" y2="245"/><line x1="280" y1="46" x2="280" y2="245"/><line x1="480" y1="46" x2="480" y2="245"/><line x1="680" y1="46" x2="680" y2="245"/></g>
+        <g stroke="#68707d" stroke-width="1.5" marker-end="url(#a)" fill="none">
+          <line x1="80" y1="70" x2="276" y2="70"/><line x1="280" y1="98" x2="476" y2="98"/><line x1="280" y1="122" x2="84" y2="122"/>
+          <line x1="80" y1="150" x2="476" y2="150"/><line x1="280" y1="190" x2="476" y2="190"/><line x1="280" y1="222" x2="676" y2="222"/>
+        </g>
+        <g fill="#16191f">
+          <text x="90" y="64">① 商品を選ぶ（商品 ID だけ送る）</text>
+          <text x="290" y="92">② Checkout を作る（金額はサーバーが決める）</text>
+          <text x="90" y="116">③ 支払いページの URL を返す</text>
+          <text x="90" y="144">④ ログインして支払う</text>
+          <text x="290" y="184">⑤ 状態を読む（paid・金額・注文番号）</text>
+          <text x="290" y="216">⑥ 1 回だけアイテムを渡す</text>
+        </g>
+      </svg>
+    </section>
+    <section class="panel-section">
+      <div class="section-head"><div><p>Code</p><h2>サーバーの要点</h2></div></div>
+<pre class="code-block"><code>// ② 注文を作る。Idempotency-Key = 注文 ID で、送り直しても二重にならない
+const res = await fetch('https://karopay.karon.jp/api/checkout/sessions', {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${process.env.KAROPAY_API_KEY}`,
+    'Content-Type': 'application/json',
+    'Idempotency-Key': order.id
+  },
+  body: JSON.stringify({
+    amount: CATALOG[itemId].amount,          // ブラウザから金額を受け取らない
+    description: CATALOG[itemId].name,
+    clientReferenceId: order.id,
+    successUrl: `${PUBLIC_URL}/thanks?order=${order.id}`,
+    cancelUrl: `${PUBLIC_URL}/shop`
+  })
+});
+
+// ⑤ 確かめてから ⑥ 渡す
+const { checkoutSession: s } = await (await fetch(
+  `https://karopay.karon.jp/api/checkout/sessions/${order.sessionId}`,
+  { headers: { Authorization: `Bearer ${process.env.KAROPAY_API_KEY}` } }
+)).json();
+
+if (s.status === 'paid' &amp;&amp; s.amount === order.amount &amp;&amp; s.clientReferenceId === order.id) {
+  // DB で「未配布 → 配布済み」を 1 回だけ切り替えられたときだけ渡す
+  if (await db.markFulfilled(order.id)) await game.give(s.payerName, order.itemId);
+}</code></pre>
+      <p class="hint">全体は <a href="https://github.com/karonyt/KaroPayAPISampleSite/blob/main/server-example/server.mjs">server-example/server.mjs</a>（Node.js 18 以上・依存なし）。<code>KAROPAY_API_KEY=... node server-example/server.mjs</code> で動きます。</p>
+    </section>
+    <section class="panel-section">
+      <div class="section-head"><div><p>Without a key</p><h2>APIキーがないとき</h2></div></div>
+      <p class="hint">サイト用コード版（<code>/api/checkout/public/...</code>）でも、自分のサーバーから <code>GET</code> で状態を読めば同じ確かめ方ができます。違いは、誰でも Checkout を作れるので金額と注文番号の照合が必須になることと、Idempotency-Key と取り消しが使えないことです。</p>
+    </section>
+
+    <section class="panel-section">
+      <div class="section-head"><div><p>Points</p><h2>実装のポイント</h2></div></div>
+      <ul class="hint">
+        <li>APIキーは KaroEarth の運営が発行します。キーはサーバーの環境変数に置き、ブラウザや公開リポジトリには入れません。</li>
+        <li>注文 ID を <code>Idempotency-Key</code> にすると、通信が切れて送り直しても Checkout は 1 つだけです。</li>
+        <li>渡す前に <code>status === "paid"</code>・金額・<code>clientReferenceId</code> の 3 つを確かめ、「渡した」を DB に記録して二重に渡さないようにします。</li>
+        <li>購入者が戻ってこなくても渡せるよう、未完了の注文を定期的に読み直します（例: 1 分ごと、期限まで）。</li>
+        <li>在庫切れなどで売れなくなったら、支払い前の Checkout を <code>/cancel</code> で取り消します。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script type="module">
+// このページは説明だけで、ブラウザからは API を呼びません。
+  </script>
+</body>
+</html>

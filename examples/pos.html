@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101318" />
+  <title>お店のレジ（QR 決済） | KaroPay の使い方</title>
+  <meta name="description" content="店番が金額を打ち、QR を相手のスマホで読んでもらう。支払いを自動で検知して完了表示。" />
+  <link rel="stylesheet" href="../styles.css" /><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../index.html" aria-label="KaroCraft Market">
+      <span>K</span>
+      <strong>KaroPay の使い方</strong>
+    </a>
+    <nav class="site-nav" aria-label="ページ">
+      <a href="../index.html">ショップ</a>
+      <a href="./index.html">使い方の例</a>
+      <a href="../docs.html">API ドキュメント</a>
+    </nav>
+  </header>
+
+  <main class="example-page">
+    <div>
+      <p class="hint"><a href="./index.html">使い方の例</a> / 07</p>
+      <h1>お店のレジ（QR 決済）</h1>
+    </div>
+    <p class="example-lead">ゲーム内のお店で、店番が PC やタブレットでこのページを開いておく例です。金額を打つと QR コードが出て、お客さんがスマホで読み取って支払います。お客さんはこのページに戻ってこないので、店側が数秒ごとに KaroPay へ問い合わせて、支払われたら自動で「支払い完了」にします。</p>
+    <p class="hint">使う API: <code>POST /api/checkout/public/sessions</code> / <code>GET /api/checkout/public/sessions/:id（ポーリング）</code> ・ <a href="https://github.com/karonyt/KaroPayAPISampleSite/blob/main/examples/pos.html">このページのソース</a></p>
+    <section id="settings"></section>
+    <section class="panel-section" id="register">
+      <div class="section-head"><div><p>Register</p><h2>レジ</h2></div><output class="badge" id="state">待機中</output></div>
+      <div class="form-grid">
+        <label><span>金額（$）</span><input id="amount" type="number" min="1" step="1" inputmode="numeric" placeholder="例: 250" /></label>
+        <button class="solid-button" id="charge" type="button">QR を出す</button>
+      </div>
+      <label class="field"><span>メモ（任意）</span><input id="memo" maxlength="60" placeholder="パン 3 個、ケーキ 1 個" /></label>
+      <output class="inline-status" id="status"></output>
+      <div class="qr-box" id="qr-box" hidden>
+        <div id="qr"></div>
+        <strong id="qr-amount"></strong>
+        <a id="qr-link" target="_blank" rel="noopener">QR が読めないときはこのリンク</a>
+        <span class="hint" id="qr-expire"></span>
+        <button class="ghost-button" id="next" type="button">次のお客さん</button>
+      </div>
+    </section>
+    <section class="panel-section">
+      <div class="section-head"><div><p>Today</p><h2>きょうの売上（このレジ）</h2></div><strong id="sum">$0</strong></div>
+      <div class="line-items" id="sales"></div>
+    </section>
+
+    <section class="panel-section">
+      <div class="section-head"><div><p>Points</p><h2>実装のポイント</h2></div></div>
+      <ul class="hint">
+        <li>戻り先（<code>successUrl</code>）を使わず、店側が <code>GET</code> で状態を読み続けます（ここでは 3 秒ごと）。<code>open</code>・<code>paying</code> 以外になったら止めます。</li>
+        <li>Checkout の <code>url</code> をそのまま QR にします。お客さんは自分のスマホで KaroPay にログインして払います。</li>
+        <li>レジは放置されやすいので、期限を 5 分にしています。期限が来ると <code>expired</code> になり、次のお客さんへ進めます。</li>
+        <li>読み取り回数は 1 分 80 回までの制限内に収まるよう、間隔を空けています（1 台なら 3 秒で十分）。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script type="module">
+import { STATUS_TEXT, dateText, el, errorMessage, loadHistory, money, mountSettings, setStatus, startCheckout, watchCheckout } from './common.js';
+
+mountSettings();
+const status = document.getElementById('status');
+const stateBadge = document.getElementById('state');
+const qrBox = document.getElementById('qr-box');
+let stopWatching = null;
+
+function setState(s) {
+  stateBadge.className = `badge ${s}`;
+  stateBadge.textContent = s === 'idle' ? '待機中' : STATUS_TEXT[s] || s;
+}
+
+document.getElementById('charge').addEventListener('click', async () => {
+  const amount = Number(document.getElementById('amount').value);
+  if (!Number.isSafeInteger(amount) || amount < 1) return setStatus(status, '金額は 1 以上の整数にしてください', 'error');
+  const memo = document.getElementById('memo').value.trim();
+  stopWatching?.();
+  setStatus(status, 'QR を作っています', 'ready');
+  try {
+    const { session, url } = await startCheckout({
+      amount, name: memo || 'レジ', description: memo ? `カロンベーカリー: ${memo}` : 'カロンベーカリー',
+      refPrefix: 'pos', expiresInMinutes: 5, redirect: false, returnTo: 'self'
+    });
+    showQr(url, amount, session.expiresAt);
+    setState('open');
+    setStatus(status, 'お客さんに QR を読んでもらってください。支払われると自動で切り替わります。', 'ready');
+    stopWatching = watchCheckout(session.id, (s, error) => {
+      if (error) return setStatus(status, `確認できません（${errorMessage(error)}）。続けて確認します`, 'error');
+      setState(s.status);
+      if (s.status === 'paid') {
+        setStatus(status, `${s.payerName} さんから ${money(s.amount)} 受け取りました`, 'ready');
+        document.getElementById('qr').replaceChildren(el('strong', { style: 'font-size:48px' }, '✓'));
+        renderSales();
+      } else if (s.status === 'expired' || s.status === 'canceled') {
+        setStatus(status, '期限が切れました。もう一度金額を打ってください', 'error');
+        qrBox.hidden = true;
+      }
+    });
+  } catch (error) {
+    setStatus(status, errorMessage(error), 'error');
+  }
+});
+
+document.getElementById('next').addEventListener('click', () => {
+  stopWatching?.();
+  qrBox.hidden = true;
+  setState('idle');
+  setStatus(status, '');
+  document.getElementById('amount').value = '';
+  document.getElementById('memo').value = '';
+  document.getElementById('amount').focus();
+});
+
+function showQr(url, amount, expiresAt) {
+  qrBox.hidden = false;
+  const host = document.getElementById('qr');
+  host.replaceChildren();
+  if (window.QRCode) new window.QRCode(host, { text: url, width: 220, height: 220, correctLevel: window.QRCode.CorrectLevel.M });
+  else host.append(el('span', { class: 'hint' }, 'QR を出せませんでした。下のリンクを使ってください。'));
+  document.getElementById('qr-amount').textContent = money(amount);
+  const link = document.getElementById('qr-link');
+  link.href = url;
+  document.getElementById('qr-expire').textContent = `期限 ${dateText(expiresAt)}`;
+}
+
+function renderSales() {
+  const today = new Date().toDateString();
+  const sales = loadHistory().filter(e => e.page === 'pos.html' && e.status === 'paid' && new Date(e.createdAt).toDateString() === today);
+  document.getElementById('sum').textContent = money(sales.reduce((s, e) => s + e.amount, 0));
+  document.getElementById('sales').replaceChildren(...sales.map(e => el('div', { class: 'line-item' },
+    el('span', {}, e.name), el('span', { class: 'hint' }, dateText(e.createdAt)), el('strong', {}, money(e.amount)))));
+}
+setState('idle');
+renderSales();
+  </script>
+</body>
+</html>
